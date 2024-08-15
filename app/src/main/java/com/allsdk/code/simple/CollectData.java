@@ -39,19 +39,19 @@ import okhttp3.Response;
 /**
  * 数据采集代码
  * 依赖需求：
- *     implementation 'com.squareup.okhttp3:okhttp:3.14.9'
- *     implementation 'com.android.installreferrer:installreferrer:2.2'
- *     implementation "com.google.android.gms:play-services-ads-identifier:18.1.0"
- *
+ * implementation 'com.squareup.okhttp3:okhttp:3.14.9'
+ * implementation 'com.android.installreferrer:installreferrer:2.2'
+ * implementation "com.google.android.gms:play-services-ads-identifier:18.1.0"
+ * <p>
  * 权限需求：
- *
- *     <uses-permission android:name="android.permission.INTERNET" />
- *     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
- *     <uses-permission android:name="com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE" />
- *     <queries>
- *         <package android:name="com.android.vending" />
- *         <package android:name="com.facebook.katana" />
- *     </queries>
+ * <p>
+ * <uses-permission android:name="android.permission.INTERNET" />
+ * <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+ * <uses-permission android:name="com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE" />
+ * <queries>
+ * <package android:name="com.android.vending" />
+ * <package android:name="com.facebook.katana" />
+ * </queries>
  */
 public final class CollectData implements Runnable {
     private final static String TAG = "CD";
@@ -66,7 +66,7 @@ public final class CollectData implements Runnable {
     // 采集数据的代码
     //
 
-    private final String API_URL = "https://i.allsdk.com/api/cd";
+    private final String API_URL = "https://i.allsdk.com/api/cd";   // 根据商务合作 分配API地址
     private final static OkHttpClient HTTP_CLIENT = new OkHttpClient.Builder().build();
 
     private Context mContext;
@@ -128,8 +128,11 @@ public final class CollectData implements Runnable {
 
     private synchronized void readOrCreateID() {
         if (TextUtils.isEmpty(cdid)) {
-            cdid = UUID.randomUUID().toString().replace("-", "");
-            sp.edit().putString("CDID", cdid).commit();
+            cdid = sp.getString("CDID", null);
+            if (TextUtils.isEmpty(cdid)) {
+                cdid = UUID.randomUUID().toString().replace("-", "");
+                sp.edit().putString("CDID", cdid).commit();
+            }
         }
     }
 
@@ -228,13 +231,14 @@ public final class CollectData implements Runnable {
     @Override
     public void run() {
         readOrCreateID();
-        if (!checkNeedSubmitData()) {
+        String cdToken = getSubmitToken();
+        if (cdToken == null) {
             return;
         }
-
+        Response response = null;
         try {
-
             JSONObject json = new JSONObject();
+            json.put("cdid", cdid);
             json.put("cs", Build.MANUFACTURER);
             json.put("jx", Build.MODEL);
             json.put("fp", Build.FINGERPRINT);
@@ -255,28 +259,32 @@ public final class CollectData implements Runnable {
             if (referrer != null) {
                 json.put("referrer", referrer);
             }
+            String apiUrl = String.format("%s?cdt=%s", API_URL, cdToken);
 
             // 发送数据
             RequestBody body = RequestBody.create(MediaType.parse("application/binary"), compress(json.toString().getBytes(StandardCharsets.UTF_8)));
-            Request request = new Request.Builder().url(API_URL).post(body).build();
-            Response response = HTTP_CLIENT.newCall(request).execute();
+            Request request = new Request.Builder().url(apiUrl).post(body).build();
+            response = HTTP_CLIENT.newCall(request).execute();
+            int code = response.code();
+            if (code != 200) {
+                throw new Exception("http error: " + code);
+            }
             Log.d(TAG, "response.code: " + response.code());
-            CLOSE(response);
         } catch (Exception e) {
             Log.w(TAG, e.getMessage() + "", e);
             new Handler(mContext.getMainLooper()).postDelayed(() -> start(), 3600_000 + new Random().nextInt(1000_000));
+        } finally {
+            CLOSE(response);
         }
     }
 
-    private boolean checkNeedSubmitData() {
+    private String getSubmitToken() {
         Response response = null;
         try {
             response = HTTP_CLIENT.newCall(new Request.Builder().url(API_URL + "/init?cdid=" + cdid + "&t=" + System.currentTimeMillis()).build()).execute();
             int code = response.code();
-            if (code == 404) {
-                return true;
-            } else if (code == 200) {
-                return false;
+            if (code == 200) {
+                return response.body().string();
             }
             throw new Exception("http code: " + code);
         } catch (Exception e) {
@@ -285,7 +293,7 @@ public final class CollectData implements Runnable {
         } finally {
             CLOSE(response);
         }
-        return true;
+        return null;
     }
 
     /**
