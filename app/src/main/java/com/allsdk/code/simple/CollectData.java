@@ -39,9 +39,9 @@ import okhttp3.Response;
 /**
  * 数据采集代码
  * 依赖需求：
- *     implementation 'com.squareup.okhttp3:okhttp:3.12.0'
+ *     implementation 'com.squareup.okhttp3:okhttp:3.14.9'
  *     implementation 'com.android.installreferrer:installreferrer:2.2'
- *     implementation "com.google.android.gms:play-services-ads-identifier:18.0.1"
+ *     implementation "com.google.android.gms:play-services-ads-identifier:18.1.0"
  *
  * 权限需求：
  *
