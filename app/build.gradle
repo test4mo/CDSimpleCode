@@ -38,7 +38,6 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 
     // CODE
-    implementation 'com.squareup.okhttp3:okhttp:3.14.9'
     implementation 'com.android.installreferrer:installreferrer:2.2'
     implementation "com.google.android.gms:play-services-ads-identifier:18.1.0"
 }

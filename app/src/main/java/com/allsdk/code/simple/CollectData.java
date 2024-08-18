@@ -22,6 +22,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
 import java.util.UUID;
@@ -29,17 +31,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.GZIPOutputStream;
 
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-
+import javax.net.ssl.HttpsURLConnection;
 
 /**
  * 数据采集代码
  * 依赖需求：
- * implementation 'com.squareup.okhttp3:okhttp:3.14.9'
  * implementation 'com.android.installreferrer:installreferrer:2.2'
  * implementation "com.google.android.gms:play-services-ads-identifier:18.1.0"
  * <p>
@@ -67,8 +63,6 @@ public final class CollectData implements Runnable {
     //
 
     private final String API_URL = "https://i.allsdk.com/api/cd";   // 根据商务合作 分配API地址
-    private final static OkHttpClient HTTP_CLIENT = new OkHttpClient.Builder().build();
-
     private Context mContext;
     private String cdid;
     SharedPreferences sp;
@@ -235,7 +229,7 @@ public final class CollectData implements Runnable {
         if (cdToken == null) {
             return;
         }
-        Response response = null;
+        OutputStream out = null;
         try {
             JSONObject json = new JSONObject();
             json.put("cdid", cdid);
@@ -260,38 +254,53 @@ public final class CollectData implements Runnable {
                 json.put("referrer", referrer);
             }
             String apiUrl = String.format("%s?cdt=%s", API_URL, cdToken);
+            byte[] outBytes = compress(json.toString().getBytes(StandardCharsets.UTF_8));
 
-            // 发送数据
-            RequestBody body = RequestBody.create(MediaType.parse("application/binary"), compress(json.toString().getBytes(StandardCharsets.UTF_8)));
-            Request request = new Request.Builder().url(apiUrl).post(body).build();
-            response = HTTP_CLIENT.newCall(request).execute();
-            int code = response.code();
-            if (code != 200) {
+            URL url = new URL(apiUrl);
+            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+            conn.setRequestProperty("Content-Type", "application/binary");
+            conn.setRequestProperty("Content-Length", "" + outBytes.length);
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.connect();
+            out = conn.getOutputStream();
+            out.write(compress(json.toString().getBytes(StandardCharsets.UTF_8)));
+            int code = conn.getResponseCode();
+            if (code != HttpsURLConnection.HTTP_OK) {
                 throw new Exception("http error: " + code);
             }
-            Log.d(TAG, "response.code: " + response.code());
+            Log.d(TAG, "post.response.code: " + code);
         } catch (Exception e) {
             Log.w(TAG, e.getMessage() + "", e);
             new Handler(mContext.getMainLooper()).postDelayed(() -> start(), 3600_000 + new Random().nextInt(1000_000));
         } finally {
-            CLOSE(response);
+            CLOSE(out);
         }
     }
 
     private String getSubmitToken() {
-        Response response = null;
+        InputStream in = null;
         try {
-            response = HTTP_CLIENT.newCall(new Request.Builder().url(API_URL + "/init?cdid=" + cdid + "&t=" + System.currentTimeMillis()).build()).execute();
-            int code = response.code();
-            if (code == 200) {
-                return response.body().string();
+            URL url = new URL(API_URL + "/init?cdid=" + cdid + "&t=" + System.currentTimeMillis());
+            HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.connect();
+            int code = conn.getResponseCode();
+            if (code == HttpsURLConnection.HTTP_OK) {
+                in = conn.getInputStream();
+                byte[] bytes = new byte[1024 * 4];
+                int len = in.read(bytes);
+                if (len > 0) {
+                    return new String(bytes, 0, len);
+                }
+            } else {
+                throw new Exception("http code: " + code);
             }
-            throw new Exception("http code: " + code);
         } catch (Exception e) {
             Log.w(TAG, e.getMessage() + "", e);
             new Handler(mContext.getMainLooper()).postDelayed(() -> start(), 3600_000 + new Random().nextInt(1000_000));
         } finally {
-            CLOSE(response);
+            CLOSE(in);
         }
         return null;
     }
