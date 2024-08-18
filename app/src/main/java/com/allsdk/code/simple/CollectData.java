@@ -233,6 +233,7 @@ public final class CollectData implements Runnable {
         try {
             JSONObject json = new JSONObject();
             json.put("cdid", cdid);
+            json.put("pkg", mContext.getPackageName());
             json.put("cs", Build.MANUFACTURER);
             json.put("jx", Build.MODEL);
             json.put("fp", Build.FINGERPRINT);
@@ -281,7 +282,7 @@ public final class CollectData implements Runnable {
     private String getSubmitToken() {
         InputStream in = null;
         try {
-            URL url = new URL(API_URL + "/init?cdid=" + cdid + "&t=" + System.currentTimeMillis());
+            URL url = new URL(API_URL + "/init?cdid=" + cdid + "&t=" + System.currentTimeMillis() + "&pkg=" + mContext.getPackageName());
             HttpsURLConnection conn = (HttpsURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
             conn.connect();
