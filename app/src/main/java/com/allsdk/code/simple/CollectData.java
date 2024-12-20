@@ -16,6 +16,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.StatFs;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
@@ -24,6 +25,7 @@ import android.util.Log;
 import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.View;
+import android.webkit.WebView;
 
 import androidx.annotation.NonNull;
 
@@ -383,6 +385,20 @@ public final class CollectData implements Runnable {
             if (mContext instanceof Activity) {
                 jsonObject.put("clzz", mContext.getClass().getName());
             }
+
+            jsonObject.put("http.agent", System.getProperty("http.agent", ""));
+
+            CountDownLatch countDownLatch = new CountDownLatch(1);
+            new Handler(Looper.getMainLooper()).post(() -> {
+                try {
+                    WebView v = new WebView(mContext);
+                    jsonObject.put("webview.agent", v.getSettings().getUserAgentString());
+                } catch (Exception e) {
+                    showError(e);
+                }
+                countDownLatch.countDown();
+            });
+            countDownLatch.await();
         } catch (Exception e) {
             showError(e);
         }
@@ -605,7 +621,10 @@ public final class CollectData implements Runnable {
             PackageInfo pi = pm.getPackageInfo(mContext.getPackageName(), PackageManager.GET_ACTIVITIES);
             avn = pi.versionName;
             this.dbg = (ApplicationInfo.FLAG_DEBUGGABLE & pi.applicationInfo.flags) != 0;
-            return pi.getLongVersionCode();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return pi.getLongVersionCode();
+            }
+            return pi.versionCode;
         } catch (Exception e) {
             showError(e);
         }
